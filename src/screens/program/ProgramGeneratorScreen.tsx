@@ -41,6 +41,7 @@ const EXPERIENCE_LEVELS: { value: ExperienceLevel; icon: string; label: string; 
 ];
 
 const SESSIONS_PER_WEEK: { value: SessionsPerWeek; label: string }[] = [
+  { value: 0, label: 'Indéfini' },
   { value: 3, label: '3 / sem' },
   { value: 4, label: '4 / sem' },
   { value: 5, label: '5 / sem' },
@@ -121,7 +122,7 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
   }
 
   async function handleGenerate() {
-    if (!goal || !experienceLevel || !sessionsPerWeek || !programDuration || !sessionDuration || !equipment) {
+    if (!goal || !experienceLevel || sessionsPerWeek === null || !programDuration || !sessionDuration || !equipment) {
       Alert.alert('Erreur', 'Veuillez répondre à toutes les questions.');
       return;
     }

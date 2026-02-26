@@ -71,7 +71,7 @@ export default function ProgramDisplayScreen({ navigation, route }: Props) {
       {/* Header with back button */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('MainTabs', { screen: 'MyProgram' })}
+          onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
           <Ionicons name="arrow-back" size={22} color={DarkColors.text} />

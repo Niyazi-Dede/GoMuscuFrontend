@@ -117,7 +117,9 @@ export default function ProgramDisplay({ program }: Props) {
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Ionicons name="barbell-outline" size={16} color={DarkColors.primary} />
-            <Text style={styles.statText}>{program.sessionsPerWeek} séances / semaine</Text>
+            <Text style={styles.statText}>
+              {program.sessionsPerWeek > 0 ? `${program.sessionsPerWeek} séances / semaine` : 'Fréquence variable'}
+            </Text>
           </View>
         </View>
       </View>
@@ -140,7 +142,7 @@ export default function ProgramDisplay({ program }: Props) {
               activeOpacity={0.75}
             >
               <Text style={[styles.weekTabText, isSelected && styles.weekTabTextSelected]}>
-                Sem. {week.weekNumber}
+                Sem. {week.weekNumber ?? (week as any).week_number ?? index + 1}
               </Text>
             </TouchableOpacity>
           );

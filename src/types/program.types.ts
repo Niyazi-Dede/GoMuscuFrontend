@@ -1,5 +1,5 @@
 /**
- * Types liĂ©s aux programmes d'entraĂźnement
+ * Types liés aux programmes d'entraînement
  */
 
 export interface Program {
@@ -38,7 +38,7 @@ export interface ExerciseDetail {
   notes?: string;
 }
 
-// Input pour la gĂ©nĂ©ration de programme
+// Input pour la génération de programme
 export interface ProgramGeneratorInput {
   goal: ProgramGoal;
   experienceLevel: ExperienceLevel;
@@ -52,7 +52,7 @@ export type ProgramGoal = 'bulk' | 'cut' | 'maintain' | 'strength';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
 
-export type SessionsPerWeek = 3 | 4 | 5 | 6;
+export type SessionsPerWeek = 0 | 3 | 4 | 5 | 6; // 0 = indéfini (l'IA choisit)
 
 export type ProgramDuration = 4 | 8 | 12; // en semaines
 
@@ -62,14 +62,14 @@ export type Equipment = 'full_gym' | 'home_gym' | 'bodyweight';
 
 // Labels pour l'affichage UI
 export const ExperienceLevelLabels: Record<ExperienceLevel, string> = {
-  beginner: 'DĂ©butant (< 6 mois)',
-  intermediate: 'IntermĂ©diaire (6 mois - 2 ans)',
-  advanced: 'AvancĂ© (> 2 ans)',
+  beginner: 'Débutant (< 6 mois)',
+  intermediate: 'Intermédiaire (6 mois - 2 ans)',
+  advanced: 'Avancé (> 2 ans)',
 };
 
 export const EquipmentLabels: Record<Equipment, string> = {
-  full_gym: 'Salle de sport complĂšte',
-  home_gym: 'Home gym (haltĂšres, barre, banc)',
+  full_gym: 'Salle de sport complète',
+  home_gym: 'Home gym (haltères, barre, banc)',
   bodyweight: 'Poids du corps uniquement',
 };
 
