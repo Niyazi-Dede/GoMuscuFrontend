@@ -40,10 +40,14 @@ export default function LoginScreen({ navigation }: Props) {
     try {
       await login(data.email, data.password);
     } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        'Email ou mot de passe incorrect.';
-      Alert.alert('Erreur de connexion', message);
+      const isNetworkError = !error.response;
+      const message = isNetworkError
+        ? 'Impossible de contacter le serveur. Vérifiez votre connexion.'
+        : error.response?.data?.message || 'Email ou mot de passe incorrect.';
+      Alert.alert(
+        isNetworkError ? 'Erreur réseau' : 'Erreur de connexion',
+        message,
+      );
     } finally {
       setIsSubmitting(false);
     }

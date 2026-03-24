@@ -1,18 +1,34 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeModules, Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 const DEFAULT_API_URL = 'http://localhost:8000/api';
 const RETRY_META_KEY = '__apiRetryIndex';
 
 function getExpoHost(): string | null {
+  // 1. Expo Go config (iOS + Android dans Expo Go)
+  const debuggerHost = Constants.expoGoConfig?.debuggerHost;
+  if (debuggerHost) return debuggerHost.split(':')[0];
+
+  // 2. Manifest classique (dev builds, anciennes versions Expo)
+  const manifest = Constants.manifest as any;
+  if (manifest?.debuggerHost) return manifest.debuggerHost.split(':')[0];
+  if (manifest?.hostUri) return manifest.hostUri.split(':')[0];
+
+  // 3. Manifest2 (Expo SDK 46+)
+  const manifest2 = Constants.manifest2 as any;
+  const m2Host = manifest2?.extra?.expoGo?.debuggerHost;
+  if (m2Host) return m2Host.split(':')[0];
+
+  // 4. Fallback Android NativeModules
   const scriptURL = NativeModules.SourceCode?.scriptURL;
-  if (typeof scriptURL !== 'string') {
-    return null;
+  if (typeof scriptURL === 'string') {
+    const match = scriptURL.match(/^https?:\/\/([^/:]+)/i);
+    return match?.[1] ?? null;
   }
 
-  const match = scriptURL.match(/^https?:\/\/([^/:]+)/i);
-  return match?.[1] ?? null;
+  return null;
 }
 
 function normalizeApiUrl(url: string): string {
@@ -132,7 +148,10 @@ api.interceptors.response.use(
 );
 
 if (__DEV__) {
-  console.log('API URL candidates:', API_URL_CANDIDATES);
+  const detectedHost = getExpoHost();
+  console.log('[API] Expo host detected:', detectedHost ?? 'NONE (fallback to localhost)');
+  console.log('[API] URL candidates:', API_URL_CANDIDATES);
+  console.log('[API] Primary URL:', API_URL);
 }
 
 export default api;
