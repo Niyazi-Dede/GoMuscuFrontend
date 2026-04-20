@@ -17,6 +17,7 @@ import { programService } from '../../services/program.service';
 import { workoutService } from '../../services/workout.service';
 import { nutritionService } from '../../services/nutrition.service';
 import { Profile, Program, WorkoutStats, NutritionStats } from '../../types';
+import { getProgramFrequencyLabel } from '../../components/program/programSessions';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -280,8 +281,7 @@ export default function HomeScreen({ navigation }: any) {
             </Text>
             <View style={styles.programMeta}>
               <Text style={styles.programMetaText}>
-                {data.program.durationWeeks} semaines ·{' '}
-                {data.program.sessionsPerWeek} séances / semaine
+                {getProgramFrequencyLabel(data.program)}
               </Text>
             </View>
             <CtaButton
@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 120,
   },
 
   // Header

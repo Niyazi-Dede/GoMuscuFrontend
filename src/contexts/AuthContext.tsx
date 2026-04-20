@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from '../services/auth.service';
+import { setApiAuthToken, setApiUnauthorizedHandler } from '../services/api';
 import { User, RegisterDto } from '../types';
 import { AuthResponse } from '../types';
 
@@ -24,15 +25,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     restoreSession();
   }, []);
 
+  useEffect(() => {
+    setApiAuthToken(token);
+  }, [token]);
+
+  useEffect(() => {
+    setApiUnauthorizedHandler(() => {
+      setToken(null);
+      setUser(null);
+    });
+
+    return () => {
+      setApiUnauthorizedHandler(null);
+    };
+  }, []);
+
   const restoreSession = async () => {
     try {
       const [storedToken, storedUser] = await Promise.all([
         AsyncStorage.getItem('token'),
         AsyncStorage.getItem('user'),
       ]);
+
       if (storedToken && storedUser) {
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
+      } else {
+        setToken(null);
+        setUser(null);
       }
     } catch (error) {
       console.error('Erreur restauration session:', error);

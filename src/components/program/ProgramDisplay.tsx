@@ -8,9 +8,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DarkColors } from '../../constants/colors';
-import { Program, Session, ExerciseDetail } from '../../types';
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
+import { Program, Session, ExerciseDetail, WeekDayLabels } from '../../types';
+import {
+  getProgramFrequencyLabel,
+  getProgramSessions,
+  getWeeklySchedule,
+  getTodayWeekDay,
+  WeeklyScheduleDay,
+} from './programSessions';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('fr-FR', {
@@ -19,8 +24,6 @@ function formatDate(iso: string) {
     year: 'numeric',
   });
 }
-
-// ─── Exercise row ─────────────────────────────────────────────────────────────
 
 function ExerciseRow({ exercise }: { exercise: ExerciseDetail }) {
   return (
@@ -45,21 +48,60 @@ function ExerciseRow({ exercise }: { exercise: ExerciseDetail }) {
   );
 }
 
-// ─── Session accordion ────────────────────────────────────────────────────────
+function SessionCard({
+  entry,
+  isToday,
+  defaultExpanded,
+}: {
+  entry: WeeklyScheduleDay;
+  isToday: boolean;
+  defaultExpanded: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const dayLabel = WeekDayLabels[entry.dayOfWeek];
+  const session = entry.session;
 
-function SessionCard({ session }: { session: Session }) {
-  const [expanded, setExpanded] = useState(true);
+  if (!session) {
+    return (
+      <View style={[styles.sessionCard, styles.restCard, isToday && styles.sessionCardToday]}>
+        <View style={styles.sessionHeader}>
+          <View style={styles.sessionTitleGroup}>
+            <View style={styles.sessionTitleRow}>
+              <Text style={styles.sessionDay}>{dayLabel}</Text>
+              {isToday ? (
+                <View style={styles.todayBadge}>
+                  <Text style={styles.todayBadgeText}>Aujourd'hui</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.restFocus}>Repos · recuperation</Text>
+          </View>
+          <Ionicons name="moon-outline" size={18} color={DarkColors.textSecondary} />
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.sessionCard}>
+    <View style={[styles.sessionCard, isToday && styles.sessionCardToday]}>
       <TouchableOpacity
         style={styles.sessionHeader}
-        onPress={() => setExpanded((v) => !v)}
+        onPress={() => setExpanded((value) => !value)}
         activeOpacity={0.75}
       >
         <View style={styles.sessionTitleGroup}>
-          <Text style={styles.sessionDay}>{session.day}</Text>
+          <View style={styles.sessionTitleRow}>
+            <Text style={styles.sessionDay}>{dayLabel}</Text>
+            {isToday ? (
+              <View style={styles.todayBadge}>
+                <Text style={styles.todayBadgeText}>Aujourd'hui</Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.sessionFocus}>{session.focus}</Text>
+          {session.recommendationReason ? (
+            <Text style={styles.sessionReason}>{session.recommendationReason}</Text>
+          ) : null}
         </View>
         <View style={styles.sessionMeta}>
           <Text style={styles.sessionExerciseCount}>
@@ -75,8 +117,8 @@ function SessionCard({ session }: { session: Session }) {
 
       {expanded && (
         <View style={styles.sessionBody}>
-          {session.exercises.map((ex, i) => (
-            <ExerciseRow key={i} exercise={ex} />
+          {session.exercises.map((exercise, index) => (
+            <ExerciseRow key={`${session.id ?? session.day}-${index}`} exercise={exercise} />
           ))}
         </View>
       )}
@@ -84,16 +126,15 @@ function SessionCard({ session }: { session: Session }) {
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
-
 interface Props {
   program: Program;
 }
 
 export default function ProgramDisplay({ program }: Props) {
-  const [selectedWeek, setSelectedWeek] = useState(0);
-
-  const currentWeek = program.content.weeks[selectedWeek];
+  const sessions = getProgramSessions(program);
+  const schedule = getWeeklySchedule(program);
+  const today = getTodayWeekDay();
+  const frequencyLabel = getProgramFrequencyLabel(program);
 
   return (
     <ScrollView
@@ -101,7 +142,6 @@ export default function ProgramDisplay({ program }: Props) {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Header card ── */}
       <View style={styles.headerCard}>
         <Text style={styles.programTitle}>{program.title}</Text>
         <Text style={styles.programDate}>
@@ -111,73 +151,63 @@ export default function ProgramDisplay({ program }: Props) {
 
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Ionicons name="calendar-outline" size={16} color={DarkColors.primary} />
-            <Text style={styles.statText}>{program.durationWeeks} semaines</Text>
+            <Ionicons name="barbell-outline" size={16} color={DarkColors.primary} />
+            <Text style={styles.statText}>{frequencyLabel}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Ionicons name="barbell-outline" size={16} color={DarkColors.primary} />
-            <Text style={styles.statText}>
-              {program.sessionsPerWeek > 0 ? `${program.sessionsPerWeek} séances / semaine` : 'Fréquence variable'}
-            </Text>
+            <Ionicons name="list-outline" size={16} color={DarkColors.primary} />
+            <Text style={styles.statText}>{sessions.length} séance{sessions.length > 1 ? 's' : ''} / semaine</Text>
           </View>
         </View>
       </View>
 
-      {/* ── Week selector ── */}
-      <Text style={styles.sectionTitle}>Programme</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.weekScroll}
-        contentContainerStyle={styles.weekScrollContent}
-      >
-        {program.content.weeks.map((week, index) => {
-          const isSelected = selectedWeek === index;
-          return (
-            <TouchableOpacity
-              key={index}
-              style={[styles.weekTab, isSelected && styles.weekTabSelected]}
-              onPress={() => setSelectedWeek(index)}
-              activeOpacity={0.75}
-            >
-              <Text style={[styles.weekTabText, isSelected && styles.weekTabTextSelected]}>
-                Sem. {week.weekNumber ?? (week as any).week_number ?? index + 1}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* ── Sessions for selected week ── */}
-      {currentWeek ? (
-        <View style={styles.sessionsContainer}>
-          {currentWeek.sessions.map((session, i) => (
-            <SessionCard key={i} session={session} />
-          ))}
+      {(program.content.selectionGuidance || program.content.changeGuidance) ? (
+        <View style={styles.guidanceCard}>
+          {program.content.selectionGuidance ? (
+            <View style={styles.guidanceRow}>
+              <Ionicons name="sparkles-outline" size={16} color={DarkColors.primary} />
+              <Text style={styles.guidanceText}>{program.content.selectionGuidance}</Text>
+            </View>
+          ) : null}
+          {program.content.changeGuidance ? (
+            <View style={styles.guidanceRow}>
+              <Ionicons name="refresh-outline" size={16} color={DarkColors.primary} />
+              <Text style={styles.guidanceText}>{program.content.changeGuidance}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
-      {/* ── Tips ── */}
-      {program.content.tips?.length > 0 && (
+      <Text style={styles.sectionTitle}>Planning de la semaine</Text>
+      <View style={styles.sessionsContainer}>
+        {schedule.map((entry) => (
+          <SessionCard
+            key={entry.dayOfWeek}
+            entry={entry}
+            isToday={entry.dayOfWeek === today}
+            defaultExpanded={entry.dayOfWeek === today && !!entry.session}
+          />
+        ))}
+      </View>
+
+      {program.content.tips?.length > 0 ? (
         <View style={styles.tipsCard}>
           <View style={styles.tipsHeader}>
             <Text style={styles.tipsIcon}>💡</Text>
             <Text style={styles.tipsTitle}>Conseils du coach IA</Text>
           </View>
-          {program.content.tips.map((tip, i) => (
-            <View key={i} style={styles.tipRow}>
+          {program.content.tips.map((tip, index) => (
+            <View key={index} style={styles.tipRow}>
               <View style={styles.tipBullet} />
               <Text style={styles.tipText}>{tip}</Text>
             </View>
           ))}
         </View>
-      )}
+      ) : null}
     </ScrollView>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -186,15 +216,13 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
-
-  // Header card
   headerCard: {
     backgroundColor: DarkColors.card,
     borderRadius: 16,
     padding: 20,
-    marginBottom: 24,
+    marginBottom: 18,
     borderWidth: 1,
     borderColor: DarkColors.divider,
   },
@@ -233,51 +261,39 @@ const styles = StyleSheet.create({
     color: DarkColors.text,
     fontSize: 13,
     fontWeight: '600',
+    textAlign: 'center',
   },
   statDivider: {
     width: 1,
     height: 20,
     backgroundColor: DarkColors.divider,
   },
-
-  // Section title
+  guidanceCard: {
+    backgroundColor: '#1A1035',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: DarkColors.primary + '44',
+    gap: 12,
+  },
+  guidanceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  guidanceText: {
+    flex: 1,
+    color: DarkColors.text,
+    fontSize: 13,
+    lineHeight: 19,
+  },
   sectionTitle: {
     color: DarkColors.text,
     fontSize: 17,
     fontWeight: '700',
     marginBottom: 12,
   },
-
-  // Week selector
-  weekScroll: {
-    marginBottom: 16,
-  },
-  weekScrollContent: {
-    gap: 8,
-    paddingRight: 4,
-  },
-  weekTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: DarkColors.inputBorder,
-    backgroundColor: DarkColors.card,
-  },
-  weekTabSelected: {
-    backgroundColor: DarkColors.primary,
-    borderColor: DarkColors.primary,
-  },
-  weekTabText: {
-    color: DarkColors.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  weekTabTextSelected: {
-    color: '#FFFFFF',
-  },
-
-  // Sessions
   sessionsContainer: {
     gap: 12,
     marginBottom: 24,
@@ -289,15 +305,49 @@ const styles = StyleSheet.create({
     borderColor: DarkColors.divider,
     overflow: 'hidden',
   },
+  sessionCardRecommended: {
+    borderColor: DarkColors.primary + '66',
+  },
+  sessionCardToday: {
+    borderColor: DarkColors.primary,
+    borderWidth: 2,
+  },
+  restCard: {
+    backgroundColor: DarkColors.background,
+    opacity: 0.75,
+  },
+  restFocus: {
+    color: DarkColors.textSecondary,
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  todayBadge: {
+    backgroundColor: DarkColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  todayBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   sessionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     padding: 14,
+    gap: 12,
   },
   sessionTitleGroup: {
     flex: 1,
-    gap: 2,
+    gap: 4,
+  },
+  sessionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   sessionDay: {
     color: DarkColors.primary,
@@ -306,10 +356,29 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  recommendedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: DarkColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  recommendedBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   sessionFocus: {
     color: DarkColors.text,
     fontSize: 15,
     fontWeight: '600',
+  },
+  sessionReason: {
+    color: DarkColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
   },
   sessionMeta: {
     flexDirection: 'row',
@@ -326,8 +395,6 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 14,
   },
-
-  // Exercise row
   exerciseRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -378,8 +445,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
   },
-
-  // Tips
   tipsCard: {
     backgroundColor: DarkColors.card,
     borderRadius: 16,

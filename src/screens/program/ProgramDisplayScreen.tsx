@@ -27,8 +27,14 @@ export default function ProgramDisplayScreen({ navigation, route }: Props) {
     try {
       const response = await programService.get(programId);
       setProgram(response.data);
-    } catch {
-      setError('Impossible de charger votre programme.');
+    } catch (error: any) {
+      const responseData = error?.response?.data;
+      setError(
+        responseData?.error ||
+        responseData?.detail ||
+        responseData?.message ||
+        'Impossible de charger votre programme.'
+      );
     } finally {
       setIsLoading(false);
     }

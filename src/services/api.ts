@@ -4,7 +4,12 @@ import { NativeModules, Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const DEFAULT_API_URL = 'http://localhost:8000/api';
+const API_PROBE_PATH = '/login';
+const API_PROBE_TIMEOUT = 1200;
 const RETRY_META_KEY = '__apiRetryIndex';
+const RESOLVED_URL_STORAGE_KEY = 'apiResolvedUrl';
+
+type UnauthorizedHandler = () => void | Promise<void>;
 
 function getExpoHost(): string | null {
   // 1. Expo Go config (iOS + Android dans Expo Go)
@@ -97,6 +102,126 @@ function buildApiCandidates(): string[] {
 
 const API_URL_CANDIDATES = buildApiCandidates();
 const API_URL = API_URL_CANDIDATES[0] || DEFAULT_API_URL;
+let authToken: string | null = null;
+let authTokenLoaded = false;
+let resolvedApiUrl: string | null = null;
+let apiUrlResolutionPromise: Promise<string> | null = null;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function setApiAuthToken(token: string | null) {
+  authToken = token;
+  authTokenLoaded = true;
+}
+
+export function setApiUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  unauthorizedHandler = handler;
+}
+
+async function getApiAuthToken(): Promise<string | null> {
+  if (authTokenLoaded) {
+    return authToken;
+  }
+
+  authTokenLoaded = true;
+
+  try {
+    authToken = await AsyncStorage.getItem('token');
+  } catch (error) {
+    console.error('Error retrieving token:', error);
+    authToken = null;
+  }
+
+  return authToken;
+}
+
+function setRequestHeader(config: any, name: string, value: string | null) {
+  const headers = (config.headers ??= {});
+
+  if (typeof headers.set === 'function') {
+    if (value === null) {
+      headers.delete?.(name);
+    } else {
+      headers.set(name, value);
+    }
+    return;
+  }
+
+  if (value === null) {
+    delete headers[name];
+  } else {
+    headers[name] = value;
+  }
+}
+
+async function probeApiCandidate(candidate: string): Promise<boolean> {
+  try {
+    const response = await axios.request({
+      baseURL: candidate,
+      url: API_PROBE_PATH,
+      method: 'OPTIONS',
+      timeout: API_PROBE_TIMEOUT,
+      validateStatus: () => true,
+    });
+
+    return response.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+async function probeCandidatesInParallel(): Promise<string | null> {
+  if (API_URL_CANDIDATES.length === 0) return null;
+
+  return new Promise<string | null>((resolve) => {
+    let settled = false;
+    let remaining = API_URL_CANDIDATES.length;
+
+    API_URL_CANDIDATES.forEach((candidate) => {
+      probeApiCandidate(candidate).then((ok) => {
+        remaining -= 1;
+        if (ok && !settled) {
+          settled = true;
+          resolve(candidate);
+        } else if (remaining === 0 && !settled) {
+          settled = true;
+          resolve(null);
+        }
+      });
+    });
+  });
+}
+
+async function resolveApiUrl(): Promise<string> {
+  if (resolvedApiUrl) {
+    return resolvedApiUrl;
+  }
+
+  if (apiUrlResolutionPromise) {
+    return apiUrlResolutionPromise;
+  }
+
+  apiUrlResolutionPromise = (async () => {
+    try {
+      const cached = await AsyncStorage.getItem(RESOLVED_URL_STORAGE_KEY);
+      if (cached && API_URL_CANDIDATES.includes(cached)) {
+        resolvedApiUrl = cached;
+        return cached;
+      }
+    } catch {}
+
+    const picked = await probeCandidatesInParallel();
+    const chosen = picked ?? API_URL;
+    resolvedApiUrl = chosen;
+    AsyncStorage.setItem(RESOLVED_URL_STORAGE_KEY, chosen).catch(() => {});
+    return chosen;
+  })();
+
+  try {
+    return await apiUrlResolutionPromise;
+  } finally {
+    apiUrlResolutionPromise = null;
+  }
+}
 
 const api = axios.create({
   baseURL: API_URL,
@@ -109,15 +234,20 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      const retryIndex = (config as any)[RETRY_META_KEY] ?? 0;
-      config.baseURL = API_URL_CANDIDATES[retryIndex] || API_URL;
+      const retryIndex = (config as any)[RETRY_META_KEY];
+      config.baseURL =
+        typeof retryIndex === 'number'
+          ? API_URL_CANDIDATES[retryIndex] || resolvedApiUrl || API_URL
+          : await resolveApiUrl();
 
-      const token = await AsyncStorage.getItem('token');
+      const token = await getApiAuthToken();
       if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+        setRequestHeader(config, 'Authorization', `Bearer ${token}`);
+      } else {
+        setRequestHeader(config, 'Authorization', null);
       }
     } catch (error) {
-      console.error('Error retrieving token:', error);
+      console.error('Error preparing request:', error);
     }
     return config;
   },
@@ -125,7 +255,17 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.config.baseURL) {
+      const url = normalizeApiUrl(response.config.baseURL);
+      if (resolvedApiUrl !== url) {
+        resolvedApiUrl = url;
+        AsyncStorage.setItem(RESOLVED_URL_STORAGE_KEY, url).catch(() => {});
+      }
+    }
+
+    return response;
+  },
   async (error) => {
     const config = error.config as any;
     const retryIndex = config?.[RETRY_META_KEY] ?? 0;
@@ -134,13 +274,22 @@ api.interceptors.response.use(
     const nextBaseUrl = API_URL_CANDIDATES[nextRetryIndex];
 
     if (config && hasNetworkError && nextBaseUrl) {
+      resolvedApiUrl = null;
+      AsyncStorage.removeItem(RESOLVED_URL_STORAGE_KEY).catch(() => {});
       config[RETRY_META_KEY] = nextRetryIndex;
       config.baseURL = nextBaseUrl;
       return api.request(config);
     }
 
-    if (error.response?.status === 401) {
-      await AsyncStorage.removeItem('token');
+    const requestUrl = String(config?.url ?? '');
+    const isPublicAuthRequest = requestUrl.endsWith('/login') || requestUrl.endsWith('/register');
+
+    if (error.response?.status === 401 && !isPublicAuthRequest) {
+      setApiAuthToken(null);
+      await AsyncStorage.multiRemove(['token', 'user']).catch((storageError) =>
+        console.error('Error clearing auth storage:', storageError)
+      );
+      await unauthorizedHandler?.();
     }
 
     return Promise.reject(error);
@@ -152,6 +301,7 @@ if (__DEV__) {
   console.log('[API] Expo host detected:', detectedHost ?? 'NONE (fallback to localhost)');
   console.log('[API] URL candidates:', API_URL_CANDIDATES);
   console.log('[API] Primary URL:', API_URL);
+  console.log('[API] Probe path:', API_PROBE_PATH);
 }
 
 export default api;

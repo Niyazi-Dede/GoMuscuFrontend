@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 24,
-    paddingBottom: 48,
+    paddingBottom: 120,
   },
   centered: {
     flex: 1,

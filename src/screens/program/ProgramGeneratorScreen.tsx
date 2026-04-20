@@ -25,13 +25,12 @@ import {
 
 type Props = MainStackScreenProps<'ProgramGenerator'>;
 
-// ─── Data ────────────────────────────────────────────────────────────────────
-
 const GOALS: { value: ProgramGoal; icon: string; label: string; description: string }[] = [
   { value: 'bulk', icon: '💪', label: 'Prise de masse', description: 'Gagner en masse musculaire et force' },
   { value: 'cut', icon: '🔥', label: 'Perte de poids / Sèche', description: 'Brûler les graisses et affiner la silhouette' },
   { value: 'maintain', icon: '⚡', label: 'Maintien / Tonification', description: 'Maintenir ma condition physique actuelle' },
   { value: 'strength', icon: '🏋️', label: 'Gain de force', description: 'Devenir plus fort et puissant' },
+  { value: 'calisthenics', icon: '🤸', label: 'Calisthénie', description: 'Contrôle du corps, force relative et maîtrise technique' },
 ];
 
 const EXPERIENCE_LEVELS: { value: ExperienceLevel; icon: string; label: string; description: string }[] = [
@@ -41,17 +40,13 @@ const EXPERIENCE_LEVELS: { value: ExperienceLevel; icon: string; label: string; 
 ];
 
 const SESSIONS_PER_WEEK: { value: SessionsPerWeek; label: string }[] = [
-  { value: 0, label: 'Indéfini' },
+  { value: 0, label: 'À recommander' },
+  { value: 1, label: '1 / sem' },
+  { value: 2, label: '2 / sem' },
   { value: 3, label: '3 / sem' },
   { value: 4, label: '4 / sem' },
   { value: 5, label: '5 / sem' },
   { value: 6, label: '6 / sem' },
-];
-
-const PROGRAM_DURATIONS: { value: ProgramDuration; label: string }[] = [
-  { value: 4, label: '4 sem.' },
-  { value: 8, label: '8 sem.' },
-  { value: 12, label: '12 sem.' },
 ];
 
 const SESSION_DURATIONS: { value: SessionDuration; label: string }[] = [
@@ -66,31 +61,26 @@ const EQUIPMENT_OPTIONS: { value: Equipment; icon: string; label: string; descri
   { value: 'bodyweight', icon: '🤸', label: 'Poids du corps', description: 'Aucun équipement nécessaire' },
 ];
 
-const TOTAL_STEPS = 6;
-
-// ─── Step labels / icons ─────────────────────────────────────────────────────
+const DEFAULT_PROGRAM_DURATION: ProgramDuration = 52;
+const TOTAL_STEPS = 5;
 
 const STEP_TITLES = [
   'Quel est votre objectif\nprincipal ?',
   "Quel est votre niveau\nd'expérience ?",
-  "Combien de séances\npar semaine ?",
-  'Quelle durée pour\nvotre programme ?',
-  "Combien de temps par\nséance ?",
+  'Combien de séances\npar semaine ?',
+  'Combien de temps par\nséance ?',
   'Quel équipement\navez-vous ?',
 ];
 
 const STEP_SUBTITLES = [
   "Sélectionnez l'objectif qui vous correspond le mieux",
   'Cela nous aidera à personnaliser votre programme',
-  'Choisissez la fréquence qui vous convient',
-  'La durée totale de votre programme',
-  'Sélectionnez la durée qui vous convient',
+  "L'IA proposera 1 à 3 séances adaptées à votre rythme",
+  'Chaque séance restera réaliste et tenable dans le temps',
   "L'équipement disponible pour vos entraînements",
 ];
 
-const STEP_ICONS = ['🎯', '📊', '📅', '📆', '⏱️', '🏋️'];
-
-// ─── Component ────────────────────────────────────────────────────────────────
+const STEP_ICONS = ['🎯', '📊', '📆', '⏱️', '🏋️'];
 
 export default function ProgramGeneratorScreen({ navigation }: Props) {
   const [currentStep, setCurrentStep] = useState(0);
@@ -99,30 +89,29 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
   const [goal, setGoal] = useState<ProgramGoal | null>(null);
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel | null>(null);
   const [sessionsPerWeek, setSessionsPerWeek] = useState<SessionsPerWeek | null>(null);
-  const [programDuration, setProgramDuration] = useState<ProgramDuration | null>(null);
   const [sessionDuration, setSessionDuration] = useState<SessionDuration | null>(null);
   const [equipment, setEquipment] = useState<Equipment | null>(null);
 
-  const currentSelections = [goal, experienceLevel, sessionsPerWeek, programDuration, sessionDuration, equipment];
+  const currentSelections = [goal, experienceLevel, sessionsPerWeek, sessionDuration, equipment];
   const isCurrentStepValid = currentSelections[currentStep] !== null;
-
   const progress = (currentStep / TOTAL_STEPS) * 100;
 
   function handleNext() {
     if (!isCurrentStepValid) return;
-    setCurrentStep((s) => s + 1);
+    setCurrentStep((step) => step + 1);
   }
 
   function handleBack() {
     if (currentStep === 0) {
       navigation.goBack();
-    } else {
-      setCurrentStep((s) => s - 1);
+      return;
     }
+
+    setCurrentStep((step) => step - 1);
   }
 
   async function handleGenerate() {
-    if (!goal || !experienceLevel || sessionsPerWeek === null || !programDuration || !sessionDuration || !equipment) {
+    if (!goal || !experienceLevel || sessionsPerWeek === null || !sessionDuration || !equipment) {
       Alert.alert('Erreur', 'Veuillez répondre à toutes les questions.');
       return;
     }
@@ -131,20 +120,30 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
       goal,
       experienceLevel,
       sessionsPerWeek,
-      programDuration,
       sessionDuration,
       equipment,
+      programDuration: DEFAULT_PROGRAM_DURATION,
     };
 
     setIsLoading(true);
+
     try {
       const response = await programService.generate(input);
       const program = response.data;
       navigation.replace('ProgramDisplay', { programId: program.id });
     } catch (error: any) {
+      const responseData = error?.response?.data;
+      const validationErrors = Array.isArray(responseData?.errors)
+        ? responseData.errors.filter((value: unknown): value is string => typeof value === 'string')
+        : [];
       const message =
-        error?.response?.data?.message ||
+        validationErrors[0] ||
+        (validationErrors.length > 1 ? validationErrors.join('\n') : null) ||
+        responseData?.error ||
+        responseData?.detail ||
+        responseData?.message ||
         'Une erreur est survenue lors de la génération. Veuillez réessayer.';
+
       Alert.alert('Erreur', message, [
         { text: 'Réessayer', onPress: handleGenerate },
         { text: 'Annuler', style: 'cancel' },
@@ -154,28 +153,27 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
     }
   }
 
-  // ─── Render helpers ─────────────────────────────────────────────────────────
-
   function renderRadioCard<T>(
     options: { value: T; icon: string; label: string; description: string }[],
     selected: T | null,
-    onSelect: (v: T) => void
+    onSelect: (value: T) => void
   ) {
-    return options.map((opt) => {
-      const isSelected = selected === opt.value;
+    return options.map((option) => {
+      const isSelected = selected === option.value;
+
       return (
         <TouchableOpacity
-          key={String(opt.value)}
+          key={String(option.value)}
           style={[styles.radioCard, isSelected && styles.radioCardSelected]}
-          onPress={() => onSelect(opt.value)}
+          onPress={() => onSelect(option.value)}
           activeOpacity={0.75}
         >
-          <Text style={styles.radioCardIcon}>{opt.icon}</Text>
+          <Text style={styles.radioCardIcon}>{option.icon}</Text>
           <View style={styles.radioCardTextGroup}>
             <Text style={[styles.radioCardLabel, isSelected && styles.radioCardLabelSelected]}>
-              {opt.label}
+              {option.label}
             </Text>
-            <Text style={styles.radioCardDescription}>{opt.description}</Text>
+            <Text style={styles.radioCardDescription}>{option.description}</Text>
           </View>
           <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
             {isSelected && <View style={styles.radioCircleInner} />}
@@ -188,21 +186,22 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
   function renderPillOptions<T>(
     options: { value: T; label: string }[],
     selected: T | null,
-    onSelect: (v: T) => void
+    onSelect: (value: T) => void
   ) {
     return (
       <View style={styles.pillRow}>
-        {options.map((opt) => {
-          const isSelected = selected === opt.value;
+        {options.map((option) => {
+          const isSelected = selected === option.value;
+
           return (
             <TouchableOpacity
-              key={String(opt.value)}
+              key={String(option.value)}
               style={[styles.pill, isSelected && styles.pillSelected]}
-              onPress={() => onSelect(opt.value)}
+              onPress={() => onSelect(option.value)}
               activeOpacity={0.75}
             >
               <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
-                {opt.label}
+                {option.label}
               </Text>
             </TouchableOpacity>
           );
@@ -210,8 +209,6 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
       </View>
     );
   }
-
-  // ─── Steps content ───────────────────────────────────────────────────────────
 
   function renderStepContent() {
     switch (currentStep) {
@@ -222,17 +219,13 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
       case 2:
         return renderPillOptions(SESSIONS_PER_WEEK, sessionsPerWeek, setSessionsPerWeek);
       case 3:
-        return renderPillOptions(PROGRAM_DURATIONS, programDuration, setProgramDuration);
-      case 4:
         return renderPillOptions(SESSION_DURATIONS, sessionDuration, setSessionDuration);
-      case 5:
+      case 4:
         return renderRadioCard(EQUIPMENT_OPTIONS, equipment, setEquipment);
       default:
         return null;
     }
   }
-
-  // ─── Loading overlay ─────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -240,19 +233,17 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
         <ActivityIndicator size="large" color={DarkColors.primary} />
         <Text style={styles.loadingTitle}>Génération en cours…</Text>
         <Text style={styles.loadingSubtitle}>
-          Notre IA crée votre programme personnalisé.{'\n'}Cela peut prendre 10 à 20 secondes.
+          Notre IA prépare un programme long terme avec des séances à répéter intelligemment.{'\n'}
+          Cela peut prendre 10 à 20 secondes.
         </Text>
       </SafeAreaView>
     );
   }
 
-  // ─── Main render ─────────────────────────────────────────────────────────────
-
   const isLastStep = currentStep === TOTAL_STEPS - 1;
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color={DarkColors.text} />
@@ -263,7 +254,6 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
         <View style={styles.backButton} />
       </View>
 
-      {/* Progress bar */}
       <View style={styles.progressBarTrack}>
         <View style={[styles.progressBarFill, { width: `${progress + (100 / TOTAL_STEPS)}%` }]} />
       </View>
@@ -273,20 +263,15 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Step icon */}
         <Text style={styles.stepIcon}>{STEP_ICONS[currentStep]}</Text>
-
-        {/* Title & subtitle */}
         <Text style={styles.title}>{STEP_TITLES[currentStep]}</Text>
         <Text style={styles.subtitle}>{STEP_SUBTITLES[currentStep]}</Text>
 
-        {/* Options */}
         <View style={styles.optionsContainer}>
           {renderStepContent()}
         </View>
       </ScrollView>
 
-      {/* Footer buttons */}
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.primaryButton, !isCurrentStepValid && styles.primaryButtonDisabled]}
@@ -308,8 +293,6 @@ export default function ProgramGeneratorScreen({ navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -336,8 +319,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -357,8 +338,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-
-  // Progress bar
   progressBarTrack: {
     height: 4,
     backgroundColor: DarkColors.divider,
@@ -371,8 +350,6 @@ const styles = StyleSheet.create({
     backgroundColor: DarkColors.primary,
     borderRadius: 2,
   },
-
-  // Scroll
   scroll: {
     flex: 1,
   },
@@ -381,14 +358,10 @@ const styles = StyleSheet.create({
     paddingTop: 28,
     paddingBottom: 16,
   },
-
-  // Step icon
   stepIcon: {
     fontSize: 40,
     marginBottom: 20,
   },
-
-  // Title & subtitle
   title: {
     color: DarkColors.text,
     fontSize: 26,
@@ -402,12 +375,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 28,
   },
-
   optionsContainer: {
     gap: 12,
   },
-
-  // Radio card
   radioCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -462,8 +432,6 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: DarkColors.primary,
   },
-
-  // Pill buttons
   pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -476,7 +444,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 20,
     backgroundColor: DarkColors.card,
-    minWidth: 80,
+    minWidth: 90,
     alignItems: 'center',
   },
   pillSelected: {
@@ -492,8 +460,6 @@ const styles = StyleSheet.create({
     color: DarkColors.primaryLight,
     fontWeight: '700',
   },
-
-  // Footer
   footer: {
     paddingHorizontal: 20,
     paddingBottom: 24,

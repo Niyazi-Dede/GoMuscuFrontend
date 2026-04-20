@@ -17,7 +17,11 @@ import { DarkColors } from '../../constants/colors';
 import { MainStackScreenProps } from '../../types';
 import { workoutService } from '../../services/workout.service';
 import { programService } from '../../services/program.service';
-import { Program, Session } from '../../types';
+import { Program, Session, WeekDayLabels } from '../../types';
+import {
+  getWeeklySchedule,
+  getTodayWeekDay,
+} from '../../components/program/programSessions';
 
 type Props = MainStackScreenProps<'WorkoutTracking'>;
 
@@ -275,10 +279,9 @@ export default function WorkoutTrackingScreen({ navigation, route }: Props) {
       );
     }
 
-    // Flatten all sessions across all weeks
-    const allSessions = program.content.weeks.flatMap((week) =>
-      week.sessions.map((session) => ({ ...session, weekNumber: week.weekNumber }))
-    );
+    const schedule = getWeeklySchedule(program);
+    const today = getTodayWeekDay();
+    const todayEntry = schedule.find((entry) => entry.dayOfWeek === today);
 
     return (
       <ScrollView
@@ -286,27 +289,95 @@ export default function WorkoutTrackingScreen({ navigation, route }: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.sectionLabel}>Choisissez une séance :</Text>
-        {allSessions.map((session, i) => (
-          <TouchableOpacity
-            key={i}
-            style={styles.sessionPickCard}
-            onPress={() => selectSession(session)}
-            activeOpacity={0.75}
-          >
-            <View style={styles.sessionPickInfo}>
-              <Text style={styles.sessionPickWeek}>Semaine {session.weekNumber}</Text>
-              <Text style={styles.sessionPickDay}>{session.day}</Text>
-              <Text style={styles.sessionPickFocus}>{session.focus}</Text>
-            </View>
-            <View style={styles.sessionPickRight}>
-              <Text style={styles.sessionPickCount}>
-                {session.exercises.length} exos
+        {todayEntry?.session ? (
+          <View style={styles.todayCard}>
+            <Text style={styles.todayLabel}>Aujourd'hui · {WeekDayLabels[today]}</Text>
+            <Text style={styles.todayFocus}>{todayEntry.session.focus}</Text>
+            <TouchableOpacity
+              style={styles.todayButton}
+              onPress={() => selectSession(todayEntry.session!)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="play-circle-outline" size={18} color="#fff" />
+              <Text style={styles.todayButtonText}>
+                Demarrer la seance ({todayEntry.session.exercises.length} exos)
               </Text>
-              <Ionicons name="chevron-forward" size={16} color={DarkColors.textSecondary} />
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.todayCardRest}>
+            <Text style={styles.todayLabel}>Aujourd'hui · {WeekDayLabels[today]}</Text>
+            <Text style={styles.todayFocus}>Jour de repos planifie</Text>
+            <Text style={styles.todayHint}>
+              Choisis une autre seance ci-dessous pour rattraper ou t'avancer.
+            </Text>
+          </View>
+        )}
+
+        {program.content.selectionGuidance ? (
+          <View style={styles.programGuidanceCard}>
+            <Text style={styles.programGuidanceText}>{program.content.selectionGuidance}</Text>
+          </View>
+        ) : null}
+
+        <Text style={styles.sectionLabel}>Planning de la semaine</Text>
+        {schedule.map((entry) => {
+          const isToday = entry.dayOfWeek === today;
+          const label = WeekDayLabels[entry.dayOfWeek];
+
+          if (!entry.session) {
+            return (
+              <View
+                key={entry.dayOfWeek}
+                style={[styles.sessionPickCard, styles.restRow, isToday && styles.sessionPickCardToday]}
+              >
+                <View style={styles.sessionPickInfo}>
+                  <View style={styles.sessionPickTitleRow}>
+                    <Text style={styles.sessionPickDay}>{label}</Text>
+                    {isToday ? (
+                      <View style={styles.sessionPickBadge}>
+                        <Text style={styles.sessionPickBadgeText}>Aujourd'hui</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.sessionPickFocus}>Repos</Text>
+                </View>
+                <Ionicons name="moon-outline" size={16} color={DarkColors.textSecondary} />
+              </View>
+            );
+          }
+
+          return (
+            <TouchableOpacity
+              key={entry.dayOfWeek}
+              style={[styles.sessionPickCard, isToday && styles.sessionPickCardToday]}
+              onPress={() => selectSession(entry.session!)}
+              activeOpacity={0.75}
+            >
+              <View style={styles.sessionPickInfo}>
+                <View style={styles.sessionPickTitleRow}>
+                  <Text style={styles.sessionPickDay}>{label}</Text>
+                  {isToday ? (
+                    <View style={styles.sessionPickBadge}>
+                      <Text style={styles.sessionPickBadgeText}>Aujourd'hui</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.sessionPickFocus}>{entry.session.focus}</Text>
+              </View>
+              <View style={styles.sessionPickRight}>
+                <Text style={styles.sessionPickCount}>
+                  {entry.session.exercises.length} exos
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={DarkColors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
+        {program.content.changeGuidance ? (
+          <Text style={styles.changeGuidanceFooter}>{program.content.changeGuidance}</Text>
+        ) : null}
       </ScrollView>
     );
   }
@@ -576,9 +647,28 @@ const styles = StyleSheet.create({
   },
 
   // Session picker
+  programGuidanceCard: {
+    backgroundColor: '#1A1035',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: DarkColors.primary + '44',
+    padding: 14,
+    marginBottom: 12,
+    gap: 8,
+  },
+  programGuidanceText: {
+    color: DarkColors.text,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  programGuidanceHint: {
+    color: DarkColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   sessionPickCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: DarkColors.card,
     borderRadius: 12,
     borderWidth: 1,
@@ -586,27 +676,114 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
-  sessionPickInfo: { flex: 1, gap: 2 },
-  sessionPickWeek: {
+  sessionPickCardRecommended: {
+    borderColor: DarkColors.primary + '66',
+  },
+  sessionPickCardToday: {
+    borderColor: DarkColors.primary,
+    borderWidth: 2,
+  },
+  restRow: {
+    backgroundColor: DarkColors.background,
+    opacity: 0.85,
+  },
+  todayCard: {
+    backgroundColor: '#1A1035',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: DarkColors.primary + '66',
+    padding: 16,
+    marginBottom: 14,
+    gap: 6,
+  },
+  todayCardRest: {
+    backgroundColor: DarkColors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: DarkColors.divider,
+    padding: 16,
+    marginBottom: 14,
+    gap: 6,
+  },
+  todayLabel: {
     color: DarkColors.primary,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
+  },
+  todayFocus: {
+    color: DarkColors.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  todayHint: {
+    color: DarkColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  todayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: DarkColors.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  todayButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  changeGuidanceFooter: {
+    color: DarkColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 12,
+    fontStyle: 'italic',
+  },
+  sessionPickInfo: { flex: 1, gap: 4 },
+  sessionPickTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   sessionPickDay: {
     color: DarkColors.text,
     fontSize: 15,
     fontWeight: '600',
   },
+  sessionPickBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: DarkColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  sessionPickBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   sessionPickFocus: {
     color: DarkColors.textSecondary,
     fontSize: 13,
+  },
+  sessionPickReason: {
+    color: DarkColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
   },
   sessionPickRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingTop: 2,
   },
   sessionPickCount: {
     color: DarkColors.textSecondary,
